@@ -234,31 +234,20 @@ plt.savefig("Outputs/correlation_matrix_heatmap.png", dpi=300)
 
 # --------------------------------------------------------------------------------------------------------------------
 
-df_base_model = df_full[["gdp_pc_growth", "ai_trends_std", "hdi", "ai_x_hdi", "country", "year"]].dropna()
-df_ext_model = df_full[["gdp_pc_growth", "ai_trends_std", "hdi", "ai_x_hdi","investment", "country", "year"]].dropna()
+df_base_model = df_full[["gdp_pc_growth", "ai_trends_std", "hdi","investment", "fdi", "trade_openness", "inflation","country", "year"]].dropna()
 df_full_model = df_full[["gdp_pc_growth", "ai_trends_std", "hdi", "ai_x_hdi","investment", "fdi", "trade_openness", "inflation","country", "year"]].dropna()
 
 # 1 Baseline regression
 
 model_base = smf.ols(
     formula="""
-    gdp_pc_growth ~ ai_trends_std + hdi + ai_x_hdi
-    + C(country) + C(year)
-    """, 
-    data=df_base_model).fit(cov_type="cluster",cov_kwds={"groups": df_base_model["country"]})
-
-
-# 2 Extended regression
-
-model_ext = smf.ols(
-    formula="""
-    gdp_pc_growth ~ ai_trends_std + hdi + ai_x_hdi + investment
+    gdp_pc_growth ~ ai_trends_std + hdi
+    + investment + fdi + trade_openness + inflation
     + C(country) + C(year)
     """,
-    data=df_ext_model).fit(cov_type="cluster",cov_kwds={"groups": df_ext_model["country"]})
+    data=df_base_model).fit(cov_type="cluster",cov_kwds={"groups": df_full_model["country"]})
 
-
-# 3 Full regression
+# 2. Full regression
 
 model_full = smf.ols(
     formula="""
@@ -303,7 +292,7 @@ def se_in_parentheses(model, var):
 # Making the Table
 
 variables_order = [("ai_trends_std", "AI trends"),("hdi", "HDI"),("ai_x_hdi", "AI trends × HDI"),("investment", "Investment"),("fdi", "FDI"),("trade_openness", "Trade openness"),("inflation", "Inflation")]
-models = {"(1) Baseline": model_base,"(2) + Investment": model_ext,"(3) Full controls": model_full}
+models = {"(1) Baseline Model": model_base,"(2) Extended Model": model_full}
 rows = []
 for var, label in variables_order:
     coef_row = {"Variable": label}
@@ -386,11 +375,29 @@ robust_no_outliers = smf.ols(
 
 # Robustness: Same main models with HC1 robust SEs
 
-model_base_hc1 = smf.ols("gdp_pc_growth ~ ai_trends_std + hdi + ai_x_hdi + C(country) + C(year)",data=df_base_model).fit(cov_type="HC1")
-
-model_ext_hc1 = smf.ols("gdp_pc_growth ~ ai_trends_std + hdi + ai_x_hdi + investment + C(country) + C(year)",data=df_ext_model).fit(cov_type="HC1")
-
 model_full_hc1 = smf.ols("""gdp_pc_growth ~ ai_trends_std + hdi + ai_x_hdi+ investment + fdi + trade_openness + inflation+ C(country) + C(year)""",data=df_full_model).fit(cov_type="HC1")
+
+# --------------------------------------------------------------------------------------------------------------------
+
+# Robustness5: using AI readiness instead of HDI
+
+df_full["ai_x_readiness"] = (df_full["ai_trends_std"]* df_full["ai_readiness_2023"])
+df_readiness_model = df_full[["gdp_pc_growth","ai_trends_std","ai_readiness_2023","ai_x_readiness","investment","fdi","trade_openness","inflation","country","year"]].dropna()
+
+model_readiness = smf.ols(
+    formula="""
+    gdp_pc_growth
+    ~ ai_trends_std
+    + ai_readiness_2023
+    + ai_x_readiness
+    + investment
+    + fdi
+    + trade_openness
+    + inflation
+    + C(country)
+    + C(year)
+    """,
+    data=df_readiness_model).fit(cov_type="cluster",cov_kwds={"groups": df_readiness_model["country"]})
 
 # --------------------------------------------------------------------------------------------------------------------
 
@@ -401,6 +408,8 @@ with pd.ExcelWriter("Outputs/robustness_checks.xlsx") as writer:
     pd.DataFrame({"Coefficient": robust_no2025.params,"Std.Error": robust_no2025.bse,"P-value": robust_no2025.pvalues}).to_excel(writer, sheet_name="No_2025")
     pd.DataFrame({"Coefficient": robust_no_outliers.params,"Std.Error": robust_no_outliers.bse,"P-value": robust_no_outliers.pvalues}).to_excel(writer, sheet_name="No_Outliers")
     pd.DataFrame({"Coefficient": model_full_hc1.params,"Std.Error": model_full_hc1.bse,"P-value": model_full_hc1.pvalues}).to_excel(writer, sheet_name="HC1_SE")
+    pd.DataFrame({"Coefficient": model_readiness.params,"Std.Error": model_readiness.bse,"P-value": model_readiness.pvalues}).to_excel(writer, sheet_name="AIReadiness")
+
 # --------------------------------------------------------------------------------------------------------------------
 
 # Illustrations
@@ -408,21 +417,30 @@ with pd.ExcelWriter("Outputs/robustness_checks.xlsx") as writer:
 
 # --------------------------------------------------------------------------------------------------------------------
 
-# Marginal effects of AI adoption across HDI levels ff
+# Marginal effects of AI adoption across HDI levels w ci ff
 
 beta_ai = model_full.params["ai_trends_std"]
 beta_inter = model_full.params["ai_x_hdi"]
-hdi_vals = np.linspace(df_full["hdi"].min(), df_full["hdi"].max(), 100)
+cov = model_full.cov_params()
+var_ai = cov.loc["ai_trends_std", "ai_trends_std"]
+var_inter = cov.loc["ai_x_hdi", "ai_x_hdi"]
+cov_ai_inter = cov.loc["ai_trends_std", "ai_x_hdi"]
+hdi_vals = np.linspace(df_full_model["hdi"].min(), df_full_model["hdi"].max(), 100)
 marginal_effect = beta_ai + beta_inter * hdi_vals
+se_marginal = np.sqrt(var_ai+ (hdi_vals ** 2) * var_inter+ 2 * hdi_vals * cov_ai_inter)
+ci_upper = marginal_effect + 1.96 * se_marginal
+ci_lower = marginal_effect - 1.96 * se_marginal
 plt.figure(figsize=(8, 5))
-plt.plot(hdi_vals, marginal_effect)
+plt.plot(hdi_vals, marginal_effect, label="Marginal effect")
+plt.fill_between(hdi_vals, ci_lower, ci_upper, alpha=0.2, label="95% CI")
 plt.axhline(0, linestyle="--")
 plt.xlabel("Human Development Index (HDI)")
 plt.ylabel("Marginal effect of AI trends on GDP per capita growth")
 plt.title("Marginal Effect of AI Trends Across HDI Levels")
+plt.legend()
 plt.tight_layout()
-plt.savefig("Outputs/f_marginal_effects.png", dpi=300)
-#plt.show()
+plt.savefig("Outputs/f_marginal_effects_ci.png", dpi=300)
+plt.show()
 
 # --------------------------------------------------------------------------------------------------------------------
 
@@ -476,19 +494,29 @@ plt.savefig("Outputs/f_predicted_growth.png", dpi=300)
 
 # --------------------------------------------------------------------------------------------------------------------
 
-# AI * HDI coeffs across models ff
+# Robustness of AI * HDI interaction coefficient across specs
 
-models = {"Baseline": model_base,"+ Investment": model_ext,"Full controls": model_full}
-coef_values = [m.params["ai_x_hdi"] for m in models.values()]
-se_values = [m.bse["ai_x_hdi"] for m in models.values()]
-plt.figure(figsize=(7, 5))
-plt.errorbar(list(models.keys()),coef_values,yerr=[1.96 * se for se in se_values],fmt="o",color="navy",ecolor="steelblue",elinewidth=2,capsize=6,markersize=8)
-plt.axhline(0, linestyle="--", color="gray")
-plt.ylabel("Coefficient on AI trends × HDI")
-plt.title("AI-HDI Interaction Across Model Specifications")
+robust_models = {"Main model": model_full,"HC1 SE": model_full_hc1,"No 2025": robust_no2025,"No outliers": robust_no_outliers,"Lagged AI": robust_lag}
+coef_names = {"Main model": "ai_x_hdi","HC1 SE": "ai_x_hdi","No 2025": "ai_x_hdi","No outliers": "ai_x_hdi","Lagged AI": "ai_lag1_x_hdi"}
+coef_values = []
+se_values = []
+labels = []
+for label, model in robust_models.items():
+    coef_name = coef_names[label]
+    if coef_name in model.params.index:
+        labels.append(label)
+        coef_values.append(model.params[coef_name])
+        se_values.append(model.bse[coef_name])
+ci_95 = [1.96 * se for se in se_values]
+plt.figure(figsize=(8, 5))
+plt.errorbar(labels,coef_values,yerr=ci_95,fmt="o",capsize=6)
+plt.axhline(0, linestyle="--")
+plt.ylabel("Coefficient on AI trends × development interaction")
+plt.title("Robustness of AI-HDI Interaction Across Specifications")
+plt.xticks(rotation=30, ha="right")
 plt.tight_layout()
-plt.savefig("Outputs/f_inttermcoeffs_models.png", dpi=300)
-#plt.show()
+plt.savefig("Outputs/f_robustness_interaction_coefficients.png", dpi=300)
+# plt.show()
 
 # --------------------------------------------------------------------------------------------------------------------
 
