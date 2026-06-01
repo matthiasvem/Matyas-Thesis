@@ -373,7 +373,7 @@ robust_no_outliers = smf.ols(
 
 # Robustness4: Cluster -> HCI
 
-# Robustness: Same main models with HC1 robust SEs
+# Robustness: Same main modellll with HC1 robust SEs
 
 model_full_hc1 = smf.ols("""gdp_pc_growth ~ ai_trends_std + hdi + ai_x_hdi+ investment + fdi + trade_openness + inflation+ C(country) + C(year)""",data=df_full_model).fit(cov_type="HC1")
 
@@ -440,7 +440,7 @@ plt.title("Marginal Effect of AI Trends Across HDI Levels")
 plt.legend()
 plt.tight_layout()
 plt.savefig("Outputs/f_marginal_effects_ci.png", dpi=300)
-plt.show()
+#plt.show()
 
 # --------------------------------------------------------------------------------------------------------------------
 
@@ -496,8 +496,8 @@ plt.savefig("Outputs/f_predicted_growth.png", dpi=300)
 
 # Robustness of AI * HDI interaction coefficient across specs
 
-robust_models = {"Main model": model_full,"HC1 SE": model_full_hc1,"No 2025": robust_no2025,"No outliers": robust_no_outliers,"Lagged AI": robust_lag}
-coef_names = {"Main model": "ai_x_hdi","HC1 SE": "ai_x_hdi","No 2025": "ai_x_hdi","No outliers": "ai_x_hdi","Lagged AI": "ai_lag1_x_hdi"}
+robust_models = {"Main model": model_full,"HC1 SE": model_full_hc1,"No 2025": robust_no2025,"No outliers": robust_no_outliers,"Lagged AI": robust_lag, "AIPI Interaction-term":model_readiness}
+coef_names = {"Main model": "ai_x_hdi","HC1 SE": "ai_x_hdi","No 2025": "ai_x_hdi","No outliers": "ai_x_hdi","Lagged AI": "ai_lag1_x_hdi","AIPI Interaction-term":"ai_x_readiness"}
 coef_values = []
 se_values = []
 labels = []
@@ -511,8 +511,8 @@ ci_95 = [1.96 * se for se in se_values]
 plt.figure(figsize=(8, 5))
 plt.errorbar(labels,coef_values,yerr=ci_95,fmt="o",capsize=6)
 plt.axhline(0, linestyle="--")
-plt.ylabel("Coefficient on AI trends × development interaction")
-plt.title("Robustness of AI-HDI Interaction Across Specifications")
+plt.ylabel("Interaction Coefficient")
+plt.title("Robustness of AI Interaction Across Specifications")
 plt.xticks(rotation=30, ha="right")
 plt.tight_layout()
 plt.savefig("Outputs/f_robustness_interaction_coefficients.png", dpi=300)
