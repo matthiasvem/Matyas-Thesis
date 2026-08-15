@@ -44,6 +44,4 @@ Organization of this folder could be improved still, since the names of the file
 
 Name:            Mátyás Varga-Etele
 
-Student Number:  s1121420
-
 Radboud Email:   matyas.varga-etele@ru.nl
